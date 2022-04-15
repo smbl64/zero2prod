@@ -1,4 +1,6 @@
+use sqlx::{Connection, PgConnection};
 use std::net::TcpListener;
+use zero2prod::configurations::get_configuration;
 
 fn spawn_app() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to address");
@@ -26,18 +28,35 @@ async fn health_check_works() {
 
 #[tokio::test]
 async fn subscribe_returns_a_200_for_valid_form_data() {
-    let address = spawn_app();
+    let app_address = spawn_app();
+    let config = get_configuration().expect("Failed to read configurations.");
+    let conn_string = config.database.connection_string();
+    //
+    // The `Connection` trait MUST be in scope for us to invoke
+    // `PgConnection::connect`, it is not an inherent method of the struct!
+    let mut connection = PgConnection::connect(&conn_string)
+        .await
+        .expect("Failed to connect to DB.");
+
     let client = reqwest::Client::new();
 
     let body = "name=jason%20bourne&email=jason_bourne%40gmail.com";
     let response = client
-        .post(format!("{}/subscriptions", address))
+        .post(format!("{}/subscriptions", app_address))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(body)
         .send()
         .await
         .expect("Failed to execute the request");
     assert_eq!(response.status().as_u16(), 200);
+
+    let record = sqlx::query!("SELECT email, name FROM subscriptions",)
+        .fetch_one(&mut connection)
+        .await
+        .expect("Failed to fetch saved subscription.");
+
+    assert_eq!(record.name, "jason bourne");
+    assert_eq!(record.email, "jason_bourne@gmail.com");
 }
 
 #[tokio::test]
