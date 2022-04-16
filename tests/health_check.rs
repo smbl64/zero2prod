@@ -1,26 +1,51 @@
-use sqlx::PgPool;
+use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::TcpListener;
-use zero2prod::configurations::get_configuration;
+use uuid::Uuid;
+use zero2prod::configurations::{get_configuration, DatabaseSettings};
 
 pub struct TestApp {
     address: String,
     db_pool: PgPool,
 }
 
-async fn make_db_pool() -> PgPool {
-    let config = get_configuration().expect("Failed to read configurations.");
-    let conn_string = config.database.connection_string();
-    PgPool::connect(&conn_string)
+async fn config_database(config: &DatabaseSettings) -> PgPool {
+    // Create a new temporary database
+    let mut connection = PgConnection::connect(&config.connection_string_without_db())
         .await
-        .expect("Failed to connect to DB.")
+        .expect("Failed to connect to the DB");
+
+    let query = format!(r#"CREATE DATABASE "{}";"#, config.database_name);
+    connection
+        .execute(query.as_str())
+        .await
+        .expect("Failed to create a temporary DB.");
+
+    // Migrate
+    let conn_pool = PgPool::connect(&config.connection_string())
+        .await
+        .expect("Failed to connect to DB.");
+
+    sqlx::migrate!("./migrations")
+        .run(&conn_pool)
+        .await
+        .expect("Failed to run migrations");
+
+    conn_pool
 }
 
 async fn spawn_app() -> TestApp {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to address");
+    let mut config = get_configuration().expect("Failed to read the config");
+    // A temporary database to run our test
+    config.database.database_name = Uuid::new_v4().to_string();
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to a random port");
     let port = listener.local_addr().unwrap().port();
-    let db_pool = make_db_pool().await;
+
+    let db_pool = config_database(&config.database).await;
+
     let server =
         zero2prod::startup::run(listener, db_pool.clone()).expect("Failed to bind address");
+
     let _ = tokio::spawn(server);
 
     TestApp {
