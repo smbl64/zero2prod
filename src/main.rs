@@ -1,3 +1,4 @@
+use env_logger::Env;
 use sqlx::PgPool;
 use std::net::TcpListener;
 use zero2prod::configurations::get_configuration;
@@ -5,6 +6,10 @@ use zero2prod::startup::run;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    // `init` will call `set_logger` for us
+    // Use RUST_LOG env var to override the "info" level.
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
     let configuration = get_configuration().expect("Failed to read configuration.");
     let conn_string = configuration.database.connection_string();
     let pool = PgPool::connect(&conn_string)

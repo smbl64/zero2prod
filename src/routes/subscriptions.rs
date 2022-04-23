@@ -23,9 +23,12 @@ pub async fn subscribe(form: web::Form<FormData>, connection: web::Data<PgPool>)
     .await;
 
     match res {
-        Ok(_) => HttpResponse::Ok().finish(),
+        Ok(_) => {
+            log::info!("New subscription has been saved!");
+            HttpResponse::Ok().finish()
+        }
         Err(e) => {
-            println!("Failed to save the record: {}", e);
+            log::error!("Failed to save the record: {:?}", e);
             HttpResponse::InternalServerError().finish()
         }
     }
