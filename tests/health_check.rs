@@ -1,7 +1,25 @@
+use once_cell::sync::Lazy;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::TcpListener;
 use uuid::Uuid;
 use zero2prod::configurations::{get_configuration, DatabaseSettings};
+use zero2prod::telemetry::{get_subscriber, init_subscriber};
+
+// To make sure the logging is initialized once
+static TRACING: Lazy<()> = Lazy::new(|| {
+    let logger_name = "zero2prod".into();
+    let log_level = "info".into();
+
+    // We cannot use a variable for `subscriber`, because `get_subscriber` returns
+    // different types.
+    if std::env::var("TEST_LOG").is_ok() {
+        let subscriber = get_subscriber(logger_name, log_level, std::io::stdout);
+        init_subscriber(subscriber);
+    } else {
+        let subscriber = get_subscriber(logger_name, log_level, std::io::sink);
+        init_subscriber(subscriber);
+    }
+});
 
 pub struct TestApp {
     address: String,
@@ -34,6 +52,10 @@ async fn config_database(config: &DatabaseSettings) -> PgPool {
 }
 
 async fn spawn_app() -> TestApp {
+    // The first time this is called, the code in TRACING will be called.
+    // Subsequent runs will ignore the code in TRACING.
+    Lazy::force(&TRACING);
+
     let mut config = get_configuration().expect("Failed to read the config");
     // A temporary database to run our test
     config.database.database_name = Uuid::new_v4().to_string();
