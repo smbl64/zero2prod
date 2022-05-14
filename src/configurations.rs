@@ -50,7 +50,7 @@ impl TryFrom<String> for Environment {
         match value.to_lowercase().as_str() {
             "production" => Ok(Self::Production),
             "local" => Ok(Self::Local),
-            _ => Err(format!("Invalid environemt value: {}", value).into()),
+            _ => Err(format!("Invalid environemt value: {}", value)),
         }
     }
 }
@@ -87,7 +87,7 @@ impl DatabaseSettings {
         PgConnectOptions::new()
             .host(&self.host)
             .username(&self.username)
-            .password(&self.password.expose_secret())
+            .password(self.password.expose_secret())
             .port(self.port)
             .ssl_mode(ssl_mode)
     }
